@@ -94,7 +94,8 @@ architectures supported:
         parser.add_argument("--multibr",            action="store_true",              help="Enable multiple branch gadgets")
         parser.add_argument("--all",                action="store_true",              help="Disables the removal of duplicate gadgets")
         parser.add_argument("--dump",               action="store_true",              help="Outputs the gadget bytes")
-
+        parser.add_argument("--loadLR",             action="store_true",              help="Search for the gadgets that preload the Link Register (ARM Only)")
+        
         self.__args = parser.parse_args(arguments)
 
         if self.__args.version:
