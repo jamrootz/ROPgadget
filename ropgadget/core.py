@@ -104,16 +104,20 @@ class Core(cmd.Cmd):
             return False
 
         arch = self.__binary.getArchMode()
+		
         print("Gadgets information\n============================================================")
+        
         for gadget in self.__gadgets:
             vaddr = gadget["vaddr"]
             insts = gadget["gadget"]
             bytes = gadget["bytes"]
-            bytesStr = " // " + binascii.hexlify(bytes).decode('utf8') if self.__options.dump else ""
+            bytesStr = " // " + binascii.hexlify(bytes).decode('utf-8') if self.__options.dump else ""
 
             print(("0x%08x" %(vaddr) if arch == CS_MODE_32 else "0x%016x" %(vaddr)) + " : %s" %(insts) + bytesStr)
-
+		
         print("\nUnique gadgets found: %d" %(len(self.__gadgets)))
+        if self.__options.loadLR:
+		    self.__preload_lr()
         return True
 
 
@@ -198,7 +202,7 @@ class Core(cmd.Cmd):
         self.__binary = Binary(self.__options)
         if self.__checksBeforeManipulations() == False:
             return False
-
+        
         if   self.__options.string:   return self.__lookingForAString(self.__options.string)
         elif self.__options.opcode:   return self.__lookingForOpcodes(self.__options.opcode)
         elif self.__options.memstr:   return self.__lookingForMemStr(self.__options.memstr)
@@ -577,6 +581,68 @@ class Core(cmd.Cmd):
     def help_thumb(self):
         print("Syntax: thumb <enable|disable> - Use the thumb mode for the search engine (ARM only)")
         return False
+
+    def __preload_lr(self):
+        refinedPOP = []
+        refinedBXLR = []
+        refinedBoth = []
+        refinedGadgets = []
+
+        for gadget in self.__gadgets:
+            vaddr = "0x%016x" % gadget["vaddr"]
+            insts = gadget["gadget"]
+
+            getPOP = insts.find("pop")
+            getBX = insts.find("bx", getPOP, -1)
+            getBXLR = insts.find("bx lr", getBX, -1)
+			
+            if "pop" in insts or "bx lr" in insts:
+                if "pop" in insts and "bx lr" in insts:
+                    if (getPOP < getBX) and (getBX < getBXLR):
+                        refinedBoth.append(vaddr + ": " + insts)
+                    continue
+				
+                if insts.find("lr", getPOP, -1) != -1:
+                    if insts.find("bx", getPOP, -1) != -1: 
+                        refinedPOP.append(vaddr + ": " + insts)
+                
+                if insts.endswith("bx lr"):
+                    refinedBXLR.append(vaddr + ": " + insts)
+		
+        finalString = ""
+        longestLen = refinedPOP
+        shortestLen = refinedBXLR
+        i = 0
+        toggle = True
+        
+        if len(refinedPOP) < len(refinedBXLR):
+            longestLen = refinedBXLR
+            shortestLen = refinedPOP
+
+        for gadget in shortestLen:
+            if toggle:
+                refinedGadgets.append(gadget)
+                toggle = False
+            else:
+                refinedGadgets.append(longestLen[i])
+                toggle = True
+				
+            i+=1
+            continue
+        
+        if len(refinedBoth) > 0:
+            refinedGadgets.append("\nGadgets that contain a pop to the LR, a branch to another register, and a branch to LR\n================================================")
+            refinedGadgets += refinedBoth
+		
+		
+        print("\n")
+        print("Gadgets that preload the LR (Link Register)\n================================================")
+
+        for gadget in refinedGadgets:
+            finalString += gadget + "\n"
+
+        print(finalString)
+        return True
 
 
     def do_all(self, s, silent=False):
